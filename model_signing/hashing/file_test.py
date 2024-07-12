@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pathlib
 import pytest
 
 from model_signing.hashing import file
@@ -23,6 +24,7 @@ _HEADER: str = "Some "
 _CONTENT: str = "text."  # note that these have the same length
 _FULL_CONTENT = _HEADER + _CONTENT
 _SHARD_SIZE = len(_HEADER)
+_UNUSED_PATH = pathlib.Path("unused")
 
 
 @pytest.fixture(scope="session")
@@ -62,55 +64,61 @@ def expected_content_digest():
     return digest.digest_hex
 
 
-class TestFileHasher:
+class TestSimpleFileHasher:
 
     def test_fails_with_negative_chunk_size(self):
         with pytest.raises(ValueError, match="Chunk size must be non-negative"):
-            file.FileHasher("unused", memory.SHA256(), chunk_size=-2)
+            file.SimpleFileHasher(_UNUSED_PATH, memory.SHA256(), chunk_size=-2)
 
     def test_hash_of_known_file(self, sample_file, expected_digest):
-        hasher = file.FileHasher(sample_file, memory.SHA256())
+        hasher = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest = hasher.compute()
         assert digest.digest_hex == expected_digest
 
     def test_hash_of_known_file_no_chunk(self, sample_file, expected_digest):
-        hasher = file.FileHasher(sample_file, memory.SHA256(), chunk_size=0)
+        hasher = file.SimpleFileHasher(
+            sample_file, memory.SHA256(), chunk_size=0
+        )
         digest = hasher.compute()
         assert digest.digest_hex == expected_digest
 
     def test_hash_of_known_file_small_chunk(self, sample_file, expected_digest):
-        hasher = file.FileHasher(sample_file, memory.SHA256(), chunk_size=2)
+        hasher = file.SimpleFileHasher(
+            sample_file, memory.SHA256(), chunk_size=2
+        )
         digest = hasher.compute()
         assert digest.digest_hex == expected_digest
 
     def test_hash_of_known_file_large_chunk(self, sample_file, expected_digest):
         size = 2 * len(_FULL_CONTENT)
-        hasher = file.FileHasher(sample_file, memory.SHA256(), chunk_size=size)
+        hasher = file.SimpleFileHasher(
+            sample_file, memory.SHA256(), chunk_size=size
+        )
         digest = hasher.compute()
         assert digest.digest_hex == expected_digest
 
     def test_hash_file_twice(self, sample_file):
-        hasher1 = file.FileHasher(sample_file, memory.SHA256())
+        hasher1 = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest1 = hasher1.compute()
-        hasher2 = file.FileHasher(sample_file, memory.SHA256())
+        hasher2 = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest2 = hasher2.compute()
         assert digest1.digest_value == digest2.digest_value
 
     def test_hash_file_twice_same_hasher(self, sample_file):
-        hasher = file.FileHasher(sample_file, memory.SHA256())
+        hasher = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest1 = hasher.compute()
         digest2 = hasher.compute()
         assert digest1.digest_value == digest2.digest_value
 
     def test_hash_file_twice_same_hasher_reset_file(self, sample_file):
-        hasher = file.FileHasher(sample_file, memory.SHA256())
+        hasher = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest1 = hasher.compute()
         hasher.set_file(sample_file)
         digest2 = hasher.compute()
         assert digest1.digest_value == digest2.digest_value
 
     def test_set_file(self, sample_file, sample_file_content_only):
-        hasher = file.FileHasher(sample_file, memory.SHA256())
+        hasher = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest1 = hasher.compute()
         hasher.set_file(sample_file_content_only)
         _ = hasher.compute()
@@ -119,12 +127,12 @@ class TestFileHasher:
         assert digest1.digest_value == digest2.digest_value
 
     def test_default_digest_name(self):
-        hasher = file.FileHasher("unused", memory.SHA256())
+        hasher = file.SimpleFileHasher(_UNUSED_PATH, memory.SHA256())
         assert hasher.digest_name == "file-sha256"
 
     def test_override_digest_name(self):
-        hasher = file.FileHasher(
-            "unused",
+        hasher = file.SimpleFileHasher(
+            _UNUSED_PATH,
             memory.SHA256(),
             chunk_size=10,
             digest_name_override="test-hash",
@@ -132,13 +140,13 @@ class TestFileHasher:
         assert hasher.digest_name == "test-hash"
 
     def test_digest_algorithm_is_digest_name(self, sample_file):
-        hasher = file.FileHasher(sample_file, memory.SHA256())
+        hasher = file.SimpleFileHasher(sample_file, memory.SHA256())
         digest = hasher.compute()
         assert digest.algorithm == hasher.digest_name
 
     def test_digest_size(self):
         memory_hasher = memory.SHA256()
-        hasher = file.FileHasher(sample_file, memory_hasher)
+        hasher = file.SimpleFileHasher(sample_file, memory_hasher)
         assert hasher.digest_size == memory_hasher.digest_size
 
 
@@ -149,18 +157,20 @@ class TestShardedFileHasher:
             ValueError, match="Shard size must be strictly positive"
         ):
             file.ShardedFileHasher(
-                "unused", memory.SHA256(), shard_size=-2, start=0, end=42
+                _UNUSED_PATH, memory.SHA256(), shard_size=-2, start=0, end=42
             )
 
     def test_fails_with_negative_start(self):
         with pytest.raises(
             ValueError, match="File start offset must be non-negative"
         ):
-            file.ShardedFileHasher("unused", memory.SHA256(), start=-2, end=42)
+            file.ShardedFileHasher(
+                _UNUSED_PATH, memory.SHA256(), start=-2, end=42
+            )
 
     def test_set_fails_with_negative_start(self):
         hasher = file.ShardedFileHasher(
-            "unused", memory.SHA256(), start=0, end=42
+            _UNUSED_PATH, memory.SHA256(), start=0, end=42
         )
         with pytest.raises(
             ValueError, match="File start offset must be non-negative"
@@ -174,11 +184,13 @@ class TestShardedFileHasher:
                 "File end offset must be stricly higher that file start offset"
             ),
         ):
-            file.ShardedFileHasher("unused", memory.SHA256(), start=42, end=2)
+            file.ShardedFileHasher(
+                _UNUSED_PATH, memory.SHA256(), start=42, end=2
+            )
 
     def test_set_fails_with_end_lower_than_start(self):
         hasher = file.ShardedFileHasher(
-            "unused", memory.SHA256(), start=0, end=42
+            _UNUSED_PATH, memory.SHA256(), start=0, end=42
         )
         with pytest.raises(
             ValueError,
@@ -195,11 +207,13 @@ class TestShardedFileHasher:
                 "File end offset must be stricly higher that file start offset"
             ),
         ):
-            file.ShardedFileHasher("unused", memory.SHA256(), start=42, end=42)
+            file.ShardedFileHasher(
+                _UNUSED_PATH, memory.SHA256(), start=42, end=42
+            )
 
     def test_set_fails_with_zero_read_span(self):
         hasher = file.ShardedFileHasher(
-            "unused", memory.SHA256(), start=0, end=42
+            _UNUSED_PATH, memory.SHA256(), start=0, end=42
         )
         with pytest.raises(
             ValueError,
@@ -214,12 +228,12 @@ class TestShardedFileHasher:
             ValueError, match="Must not read more than shard_size=2"
         ):
             file.ShardedFileHasher(
-                "unused", memory.SHA256(), start=0, end=42, shard_size=2
+                _UNUSED_PATH, memory.SHA256(), start=0, end=42, shard_size=2
             )
 
     def test_set_fails_with_read_span_too_large(self):
         hasher = file.ShardedFileHasher(
-            "unused", memory.SHA256(), start=0, end=2, shard_size=2
+            _UNUSED_PATH, memory.SHA256(), start=0, end=2, shard_size=2
         )
         with pytest.raises(
             ValueError, match="Must not read more than shard_size=2"
@@ -365,13 +379,13 @@ class TestShardedFileHasher:
 
     def test_default_digest_name(self):
         hasher = file.ShardedFileHasher(
-            "unused", memory.SHA256(), start=0, end=2, shard_size=10
+            _UNUSED_PATH, memory.SHA256(), start=0, end=2, shard_size=10
         )
         assert hasher.digest_name == "file-sha256-10"
 
     def test_override_digest_name(self):
         hasher = file.ShardedFileHasher(
-            "unused",
+            _UNUSED_PATH,
             memory.SHA256(),
             start=0,
             end=2,
@@ -394,5 +408,53 @@ class TestShardedFileHasher:
 
     def test_digest_size(self):
         memory_hasher = memory.SHA256()
-        hasher = file.FileHasher(sample_file, memory_hasher)
+        hasher = file.ShardedFileHasher(
+            sample_file, memory_hasher, start=0, end=2
+        )
+        assert hasher.digest_size == memory_hasher.digest_size
+
+
+class TestOpenedFileHasher:
+
+    def test_hash_of_known_file(self, sample_file, expected_digest):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f)
+            digest = hasher.compute()
+
+        assert digest.digest_hex == expected_digest
+
+    def test_set_file_descriptor(self, sample_file, expected_digest):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f)
+
+        with open(sample_file, "rb") as f:
+            hasher.set_file_descriptor(f)
+            digest = hasher.compute()
+
+        assert digest.digest_hex == expected_digest
+
+    def test_default_digest_name(self, sample_file):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f)
+
+        assert hasher.digest_name == "file-fd-sha256"
+
+    def test_override_digest_name(self, sample_file):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f, digest_name_override="test-hash")
+
+        assert hasher.digest_name == "test-hash"
+
+    def test_digest_algorithm_is_digest_name(self, sample_file):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f)
+            digest = hasher.compute()
+
+        assert digest.algorithm == hasher.digest_name
+
+    def test_digest_size(self, sample_file):
+        with open(sample_file, "rb") as f:
+            hasher = file.OpenedFileHasher(f)
+
+        memory_hasher = memory.SHA256()
         assert hasher.digest_size == memory_hasher.digest_size
