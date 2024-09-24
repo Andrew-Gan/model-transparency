@@ -1,0 +1,4 @@
+2024-09-16
+study memory storage of weights during training
+benchmark PARSHA256, parallel hashing algorithms
+GPUdirect storage investigate usability for hashing from file system
